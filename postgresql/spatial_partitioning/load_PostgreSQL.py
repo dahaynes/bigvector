@@ -6,8 +6,9 @@ This script will partition load a partitioned dataset into the database.
 """
 
 import fiona
-import psycopg2, geopandas
-from collections import Counter
+import psycopg2
+from collections import Counter, OrderedDict
+from shapely.geometry import shape
 
 fileIn = r"/media/sf_data/scidb_datasets/vector/states_hash.shp"
 
@@ -50,6 +51,12 @@ def CreateIndex(con, tableName, indexType, indexField ):
     """
 
     cur = con.cursor()
+    query = """ CREATE INDEX ON %s USING %s ("%s"); """ % (tableName, indexType, indexField)
+    
+    try:
+        cur.execute(query)
+    except psycopg2.DatabaseError as e:
+        print("Error adding index to child table", e)
 
         
 def AddGeometryField(con, tableName):
@@ -71,7 +78,7 @@ def ReadAttributes(features):
     """
     theKeys = features[0]['properties'].keys()
 
-    attributeDict = {}
+    attributeDict = OrderedDict()
     for k in theKeys:
         items = [ f['properties'][k] for f in features]
         attributeDict[k] = items
@@ -90,6 +97,39 @@ def GenerateDDL(attributeDict):
         attributeDict[k]
     pass
     
+def LoadShapefile(con, tableName, features, srid):
+    """
+    
+    """
+
+    cur = con.cursor()
+    #propertyDict = ReadAttributes(features)
+    
+    for feature in features:
+        theGeom = shape(feature['geometry'])
+        
+        fieldValues = str(tuple(feature['properties'].values() )  )
+        geomText = str("ST_GeomFromText('%s',%s)" % (theGeom.wkt, srid))
+        fieldValuesText = fieldValues.replace("(", "").replace(")", "") + ", " + geomText
+        #fieldValuesText = " ".join([fieldValues, geomText])
+        
+        #fieldNames = list(features['properties'].keys())
+        #fieldNames.append('geom')
+        fieldNames = tuple(feature['properties'].keys()) + ('geom',)
+        fieldNamesText = str(fieldNames).replace("'", '"')
+        #fieldNames = tuple(fieldNames)
+        #[feature['properties'][propertyKey] for propertyKey in feature['properties'].keys() ]
+        query = "INSERT INTO %s %s VALUES (%s) ;" % (tableName, fieldNamesText , fieldValuesText)
+        
+        #print(query)
+        try:
+            cur.execute(query)
+        except psycopg2.DatabaseError as e:
+            print(cur.query, e)
+            break
+    
+    return(query)
+        
 
 def ReadShapefile(fileIn, tableName, partitionField, partitionType ="LIST"):
     
@@ -99,7 +139,7 @@ def ReadShapefile(fileIn, tableName, partitionField, partitionType ="LIST"):
         epsgText = v.crs['init']
         epsgCode = epsgText.split(":")[1]
         
-        tableDDL = "name text, hash_6 varchar(7), hash_2 varchar(3), partition_value integer"
+        tableDDL = "name text, hash_6 varchar(7), hash_2 varchar(3), partition_ integer, geom geometry"
         tablePartition = "PARTITION BY %s (%s)" % (partitionType, partitionField)
         
     #pgCon = CreatePostgreSQLConnection()
@@ -122,10 +162,22 @@ def ReadShapefile(fileIn, tableName, partitionField, partitionType ="LIST"):
                 partitionListValue = "FOR VALUES IN ('%s')" % (partition,)
             else:
                 partitionListValue = "FOR VALUES IN (%s)" % (int(partition),)
-            CreateTable(pgCon, ddl="None", tableName=partitionTableName, partition=partitionTable, childTable=True, partitionValues= partitionListValue)
-            print(partitionTableName)
-        pgCon.commit()
             
+            try:                
+                CreateTable(pgCon, ddl="None", tableName=partitionTableName, partition=partitionTable, childTable=True, partitionValues= partitionListValue)
+            except:
+                print("Error creating child table %s" % (partitionTableName))
+        
+        h = LoadShapefile(pgCon, tableName, v, epsgCode)
+
+        for p, partition in enumerate(partitions):
+            #Building statements to create child tables.
+            partitionTableName = "%s_%s" % (tableName,p)
+            CreateIndex(pgCon, partitionTableName, "GIST", "geom" )
+            
+        pgCon.commit()
+        return h
+        
 
     else:
         print("Error")
@@ -144,7 +196,7 @@ def argument_parser():
     parser.add_argument("-t", required =True, help="Output timing results into CSV file", dest="tableName", default="None")  
 
 postGISTable = 'states_partitioned'
-ReadShapefile(fileIn, postGISTable, 'hash_2')
+k = ReadShapefile(fileIn, postGISTable, 'hash_2')
 
 #con = psycopg2.connect(host='localhost', database='research', user='david', port=5434, password='david')
 #
