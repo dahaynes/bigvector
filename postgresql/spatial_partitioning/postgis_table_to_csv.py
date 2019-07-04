@@ -39,18 +39,15 @@ def WriteFile(filePath, results, theFields):
     This function writes out the results to a csv
     CSV is delimited with semicolon
     """
-    if isinstance(filePath, str):
-        f = open(filePath, 'w')
-        theWriter = csv.DictWriter(f, fieldnames=theFields, delimiter=";")
-    else:
-        theWriter = csv.DictWriter(filePath, fieldnames=theFields, delimiter=";")
     
-    theWriter.writeheader()
-    try:
-        for r in results:
-            theWriter.writerow(r) 
-    except:
-        print("ERROR.... ", r)
+    with open(filePath, 'w', newline='\n') as f:
+        theWriter = csv.DictWriter(f, fieldnames=theFields, delimiter=";")
+        theWriter.writeheader()
+        try:
+            for r in results:
+                theWriter.writerow(r) 
+        except:
+            print("ERROR.... ", r)
     
 def GetColumnNames(tableName):
     """
@@ -85,7 +82,7 @@ def argument_parser():
     parser.add_argument("-p", required=True, type=int, help="port number of citusDB", dest="port")   
     parser.add_argument("-u", required=True, type=str, help="db username", dest="user")
     
-    parser.add_argument("-o", required=False, type=argparse.FileType('w', newline='\n'), help="The file path of the csv", dest="csv", default=None)
+    parser.add_argument("-o", required=False, type=str, help="The file path of the csv", dest="csv", default=None)
 
     return parser    
 
