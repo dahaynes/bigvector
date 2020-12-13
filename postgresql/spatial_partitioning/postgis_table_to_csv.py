@@ -61,7 +61,7 @@ def GetColumnNames(tableName):
         psqlSchema, psqlTable = tableName.split(".")
         return "SELECT * FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}';".format(psqlSchema, psqlTable)
     else:
-        return "SELECT * FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}';".format('public', psqlTable)
+        return "SELECT * FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}';".format('public', tableName)
 
     
 
